@@ -1,7 +1,11 @@
-name: Notion Content Wash
+name: Notion Auto Wash (Hourly)
 
 on:
-  workflow_dispatch: # 仅手动触发，避免定时任务误跑消耗大量资源
+  schedule:
+    # 这里的语法是 Cron 表达式
+    # "0 * * * *" 代表：每小时的第 0 分钟执行一次 (即每小时跑一次)
+    - cron: "0 * * * *"
+  workflow_dispatch: # 保留手动触发按钮
 
 jobs:
   wash:
@@ -13,7 +17,7 @@ jobs:
           node-version: 18
       - run: npm install
       
-      # 运行新的洗图脚本
+      # 运行增量洗图脚本
       - run: node wash_content.js
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
