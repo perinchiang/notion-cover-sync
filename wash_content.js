@@ -214,17 +214,38 @@ async function fixBadGithubLink(block, oldUrl) {
     }
 }
 
+
 async function main() {
-  console.log("🚀 开始全量洗图 (包含第三方外链)...");
-  const pages = await notion.databases.query({ database_id: DATABASE_ID });
-  console.log(`📄 找到 ${pages.results.length} 篇文章`);
+  console.log("🚀 开始增量洗图 (只检查最近修改的文章)...");
+
+  // 1. 设定时间范围：只检查“过去 2 小时”内有变动的文章
+  // 为什么是 2 小时？为了防止 GitHub Action 定时任务排队延迟，多预留一点时间窗口
+  const timeWindow = new Date(new Date().getTime() - 2 * 60 * 60 * 1000).toISOString();
+
+  const pages = await notion.databases.query({
+    database_id: DATABASE_ID,
+    filter: {
+      timestamp: "last_edited_time", // 筛选条件：最后编辑时间
+      last_edited_time: {
+        on_or_after: timeWindow,     // 在“过去 2 小时”之后
+      },
+    },
+  });
+
+  if (pages.results.length === 0) {
+      console.log("💤 最近没有文章更新，脚本休息。");
+      return;
+  }
+
+  console.log(`⚡️ 发现 ${pages.results.length} 篇近期修改的文章，开始检查...`);
 
   for (const page of pages.results) {
     const pageTitle = page.properties['Title']?.title[0]?.plain_text || "无标题";
     console.log(`\n🔍 扫描: ${pageTitle}`);
     await processBlocks(page.id);
   }
-  console.log("\n🎉 完成！");
+  
+  console.log("\n🎉 增量任务完成！");
 }
 
 main().catch(console.error);
