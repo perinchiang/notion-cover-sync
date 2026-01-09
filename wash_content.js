@@ -7,7 +7,7 @@ import sharp from "sharp";
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 const DATABASE_ID = process.env.DATABASE_ID;
 const GH_TOKEN = process.env.GH_TOKEN;
-const IMAGE_REPO = process.env.IMAGE_REPO; // 例如: perinchiang/notion-image-bed
+const IMAGE_REPO = process.env.IMAGE_REPO; 
 const IMAGE_BRANCH = process.env.IMAGE_BRANCH || "main";
 
 // 递归深度
@@ -63,18 +63,33 @@ function convertToJsDelivr(rawUrl) {
 }
 
 async function compressImage(buffer) {
-  if (buffer.length < COMPRESS_THRESHOLD) {
-    return { buffer, ext: "png" }; 
-  }
-  console.log(`📉 图片过大 (${(buffer.length / 1024 / 1024).toFixed(2)} MB)，执行强力压缩...`);
   try {
+    // 1. 获取图片元数据 (无论大小)
+    const metadata = await sharp(buffer).metadata();
+    let ext = metadata.format;
+    
+    // 规范化后缀: jpeg -> jpg
+    if (ext === "jpeg") ext = "jpg";
+    if (!ext) ext = "png"; // 兜底
+
+    // 2. 如果图片小于阈值，不压缩，但返回正确的后缀
+    if (buffer.length < COMPRESS_THRESHOLD) {
+      return { buffer, ext }; 
+    }
+
+    console.log(`📉 图片过大 (${(buffer.length / 1024 / 1024).toFixed(2)} MB)，执行强力压缩...`);
+    
+    // 3. 大图压缩为 WebP 或 JPG (这里保持你原来的 JPG 逻辑，也可以改为 webp 更好)
     const newBuffer = await sharp(buffer)
       .resize({ width: 2560, withoutEnlargement: true }) 
       .toFormat("jpeg", { quality: 85 })
       .toBuffer();
+      
     return { buffer: newBuffer, ext: "jpg" };
+
   } catch (e) {
-    console.error("⚠️ 压缩失败:", e);
+    console.error("⚠️ 图片识别或压缩失败，降级处理:", e);
+    // 假如 sharp 识别失败，才兜底返回 png
     return { buffer, ext: "png" };
   }
 }
