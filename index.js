@@ -106,8 +106,14 @@ async function main() {
   
   const pages = await notion.databases.query({
     database_id: DATABASE_ID,
+    // ✨ 核心修改在这里
+    filter: {
+        property: "status",
+        select: {
+            equals: "Published"
+        }
+    }
   });
-
   console.log(`📄 共找到 ${pages.results.length} 篇文章`);
 
   for (const page of pages.results) {
