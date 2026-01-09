@@ -14,7 +14,7 @@ const IMAGE_BRANCH = process.env.IMAGE_BRANCH || "main";
 // ⚠️ 设为 true 会强制重新上传封面，即使 Notion 已经有封面了
 // ⚠️ 设为 false 则跳过已有封面的文章（节省资源）
 // 你现在因为图床被删了，建议设为 true 跑一次，修复完后再改回 false
-const FORCE_UPDATE = true; 
+const FORCE_UPDATE = false; 
 
 async function uploadToGithub(buffer, filename) {
   // 检查文件是否已存在（可选优化，避免重复上传报错，这里直接覆盖或忽略错误）
