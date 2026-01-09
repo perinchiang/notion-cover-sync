@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "0 22 * * *" # UTC 22 = 北京时间 06:00
   workflow_dispatch:
+    inputs:
+      force_update:
+        description: '强制全量更新 (即使已有封面也重新上传)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   run:
@@ -21,3 +27,5 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           IMAGE_REPO: ${{ secrets.IMAGE_REPO }}
           IMAGE_BRANCH: ${{ secrets.IMAGE_BRANCH }}
+          # ✨ 改动：传入输入值，定时任务时 inputs 为空，默认为 false
+          FORCE_UPDATE: ${{ inputs.force_update }}
