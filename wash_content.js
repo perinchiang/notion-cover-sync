@@ -108,7 +108,6 @@ async function replaceImage(block) {
       await notion.blocks.update({
         block_id: block.id,
         image: {
-          type: "external",
           external: {
             url: newUrl
           }
