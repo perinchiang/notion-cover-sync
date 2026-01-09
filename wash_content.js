@@ -21,7 +21,6 @@ const COMPRESS_THRESHOLD = 5 * 1024 * 1024;
  */
 function isMyRepoImage(url) {
     // 只要链接里包含仓库名，就认为是自家的图
-    // 兼容 raw.githubusercontent, cdn.jsdelivr, github.com 等各种前缀
     return url.includes(IMAGE_REPO);
 }
 
@@ -64,7 +63,7 @@ function convertToJsDelivr(rawUrl) {
 
 async function compressImage(buffer) {
   try {
-    // 1. 获取图片元数据 (无论大小)
+    // 1. 获取图片元数据
     const metadata = await sharp(buffer).metadata();
     let ext = metadata.format;
     
@@ -79,7 +78,7 @@ async function compressImage(buffer) {
 
     console.log(`📉 图片过大 (${(buffer.length / 1024 / 1024).toFixed(2)} MB)，执行强力压缩...`);
     
-    // 3. 大图压缩为 WebP 或 JPG (这里保持你原来的 JPG 逻辑，也可以改为 webp 更好)
+    // 3. 大图压缩
     const newBuffer = await sharp(buffer)
       .resize({ width: 2560, withoutEnlargement: true }) 
       .toFormat("jpeg", { quality: 85 })
@@ -89,7 +88,6 @@ async function compressImage(buffer) {
 
   } catch (e) {
     console.error("⚠️ 图片识别或压缩失败，降级处理:", e);
-    // 假如 sharp 识别失败，才兜底返回 png
     return { buffer, ext: "png" };
   }
 }
@@ -118,7 +116,7 @@ async function uploadToGithub(buffer, filename) {
              throw new Error(text);
         }
     }
-    // 返回 CDN 链接 (因为你用了 PicList 也是这个格式)
+    // 返回 CDN 链接
     return `https://cdn.jsdelivr.net/gh/${IMAGE_REPO}@${IMAGE_BRANCH}/images/${filename}`;
   } catch (e) {
     console.error("上传 GitHub 失败:", e);
@@ -154,7 +152,7 @@ async function processBlocks(blockId, depth = 0) {
                   // 情况2: 已经是自家的图 -> 检查是否是坏链 (Raw -> CDN)
                   await fixBadGithubLink(block, url);
               } else {
-                  // 情况3: 别人的外链 (Unsplash, 百度, 其他图床) -> 统统抓回来！
+                  // 情况3: 别人的外链 -> 抓回来
                   await handleDownloadAndUpload(block, url, "ExternalLink");
               }
           }
@@ -174,7 +172,6 @@ async function processBlocks(blockId, depth = 0) {
 async function handleDownloadAndUpload(block, url, sourceType) {
     console.log(`📥 发现 [${sourceType}] 图片，准备搬运... (ID: ${block.id})`);
     
-    // 如果是 CDN 链接下载可能会报错，尝试还原（针对那种已经是自己图床但因为某种原因想重传的情况，较少见）
     const downloadUrl = convertToRaw(url);
 
     try {
@@ -212,7 +209,6 @@ async function handleDownloadAndUpload(block, url, sourceType) {
     }
 }
 
-// 仅修复链接格式 (Raw -> CDN)
 async function fixBadGithubLink(block, oldUrl) {
     const newUrl = convertToJsDelivr(oldUrl);
     if (newUrl !== oldUrl && newUrl.includes("cdn.jsdelivr.net")) {
@@ -229,30 +225,40 @@ async function fixBadGithubLink(block, oldUrl) {
     }
 }
 
-
 async function main() {
-  console.log("🚀 开始增量洗图 (只检查最近修改的文章)...");
+  console.log("🚀 开始增量洗图 (只检查最近修改且已发布的文章)...");
 
-  // 1. 设定时间范围：只检查“过去 2 小时”内有变动的文章
-  // 为什么是 2 小时？为了防止 GitHub Action 定时任务排队延迟，多预留一点时间窗口
+  // 1. 设定时间范围：过去 2 小时
   const timeWindow = new Date(new Date().getTime() - 2 * 60 * 60 * 1000).toISOString();
 
+  // 2. 查询数据库：加入双重过滤 (时间 AND 状态)
   const pages = await notion.databases.query({
     database_id: DATABASE_ID,
     filter: {
-      timestamp: "last_edited_time", // 筛选条件：最后编辑时间
-      last_edited_time: {
-        on_or_after: timeWindow,     // 在“过去 2 小时”之后
-      },
+      and: [
+        {
+          timestamp: "last_edited_time",
+          last_edited_time: {
+            on_or_after: timeWindow,
+          },
+        },
+        // 👇 这一段是新增的，保护你的隐私 👇
+        {
+          property: "status", // 请确保你的 Notion 列名是小写 status
+          select: {
+            equals: "Published" // 只有发布状态的文章才处理
+          }
+        }
+      ]
     },
   });
 
   if (pages.results.length === 0) {
-      console.log("💤 最近没有文章更新，脚本休息。");
+      console.log("💤 最近没有符合条件(已发布且刚修改)的文章，脚本休息。");
       return;
   }
 
-  console.log(`⚡️ 发现 ${pages.results.length} 篇近期修改的文章，开始检查...`);
+  console.log(`⚡️ 发现 ${pages.results.length} 篇待处理文章...`);
 
   for (const page of pages.results) {
     const pageTitle = page.properties['Title']?.title[0]?.plain_text || "无标题";
@@ -260,7 +266,7 @@ async function main() {
     await processBlocks(page.id);
   }
   
-  console.log("\n🎉 增量任务完成！");
+  console.log("\n🎉 任务完成！");
 }
 
 main().catch(console.error);
