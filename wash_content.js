@@ -1,6 +1,7 @@
 import { Client } from "@notionhq/client";
 import crypto from "crypto";
 import fetch from "node-fetch";
+import sharp from "sharp"; // ✅ 新增引入 sharp
 
 // --- 配置区域 ---
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
@@ -11,28 +12,51 @@ const IMAGE_BRANCH = process.env.IMAGE_BRANCH || "main";
 
 // 递归深度
 const MAX_DEPTH = 3;
+// 压缩阈值 (单位: 字节) - 超过 5MB 就压缩
+const COMPRESS_THRESHOLD = 5 * 1024 * 1024; 
 
 /**
  * 转换 GitHub Raw 链接为 jsDelivr CDN 链接
- * 输入: https://raw.githubusercontent.com/user/repo/branch/path/to/file.png
- * 输出: https://cdn.jsdelivr.net/gh/user/repo@branch/path/to/file.png
  */
 function convertToJsDelivr(rawUrl) {
   try {
-    // 使用正则提取关键信息
     const regex = /https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)/;
     const match = rawUrl.match(regex);
-    
     if (match) {
-      const user = match[1];
-      const repo = match[2];
-      const branch = match[3];
-      const path = match[4];
-      return `https://cdn.jsdelivr.net/gh/${user}/${repo}@${branch}/${path}`;
+      return `https://cdn.jsdelivr.net/gh/${match[1]}/${match[2]}@${match[3]}/${match[4]}`;
     }
-    return rawUrl; // 匹配失败则返回原样
+    return rawUrl;
   } catch (e) {
     return rawUrl;
+  }
+}
+
+/**
+ * ✅ 图片压缩函数
+ */
+async function compressImage(buffer) {
+  // 如果文件小于阈值，直接返回原文件
+  if (buffer.length < COMPRESS_THRESHOLD) {
+    return { buffer, ext: "png" }; // 默认假设是 png，稍微不准确但不影响上传
+  }
+
+  console.log(`📉 图片过大 (${(buffer.length / 1024 / 1024).toFixed(2)} MB)，正在压缩...`);
+
+  try {
+    // 使用 sharp 进行压缩
+    // 1. 转换为 jpeg (压缩率高)
+    // 2. 限制最大宽度 1920px (防止超大分辨率)
+    // 3. 质量 80%
+    const newBuffer = await sharp(buffer)
+      .resize({ width: 1920, withoutEnlargement: true }) // 只缩小不放大
+      .toFormat("jpeg", { quality: 80 })
+      .toBuffer();
+
+    console.log(`📉 压缩完成: ${(newBuffer.length / 1024 / 1024).toFixed(2)} MB`);
+    return { buffer: newBuffer, ext: "jpg" };
+  } catch (e) {
+    console.error("⚠️ 压缩失败，将尝试上传原图:", e);
+    return { buffer, ext: "png" };
   }
 }
 
@@ -55,11 +79,13 @@ async function uploadToGithub(buffer, filename) {
 
     if (!res.ok && res.status !== 422 && res.status !== 409) {
          const text = await res.text();
-         console.error(`GitHub Upload Error: ${text}`);
-         throw new Error(text);
+         // 如果是 422，可能是文件已存在，不报错
+         if (!text.includes("sha")) {
+            console.error(`GitHub Upload Error: ${text}`);
+            throw new Error(text);
+         }
     }
     
-    // ✅ 重点修改：直接返回 CDN 链接
     return `https://cdn.jsdelivr.net/gh/${IMAGE_REPO}@${IMAGE_BRANCH}/images/${filename}`;
     
   } catch (e) {
@@ -82,16 +108,9 @@ async function processBlocks(blockId, depth = 0) {
     });
 
     for (const block of response.results) {
-      // -------------------------------------------------
-      // 情况 1: Notion 原生图片 (需要下载 -> 上传 -> 替换)
-      // -------------------------------------------------
       if (block.type === "image" && block.image.type === "file") {
          await replaceNotionImage(block);
       }
-
-      // -------------------------------------------------
-      // 情况 2: 已经是 GitHub 链接但不是 CDN (需要修复链接)
-      // -------------------------------------------------
       else if (block.type === "image" && block.image.type === "external") {
          const url = block.image.external.url;
          if (url.includes("raw.githubusercontent.com")) {
@@ -99,7 +118,6 @@ async function processBlocks(blockId, depth = 0) {
          }
       }
 
-      // 递归处理子块
       if (block.has_children) {
         await processBlocks(block.id, depth + 1);
       }
@@ -117,15 +135,19 @@ async function replaceNotionImage(block) {
   try {
     const res = await fetch(originalUrl);
     if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-    const buffer = Buffer.from(await res.arrayBuffer());
+    const originalBuffer = Buffer.from(await res.arrayBuffer());
 
+    // ✅ 调用压缩逻辑
+    const { buffer, ext } = await compressImage(originalBuffer);
+
+    // 生成文件名 (使用压缩后buffer的hash)
     const hash = crypto.createHash("sha1").update(buffer).digest("hex");
-    const filename = `${hash}.png`;
+    const filename = `${hash}.${ext}`;
 
     const newUrl = await uploadToGithub(buffer, filename);
 
     if (newUrl) {
-      console.log(`🚀 上传并生成 CDN 链接: ${newUrl}`);
+      console.log(`🚀 上传成功: ${newUrl}`);
       await updateBlockUrl(block.id, newUrl);
     }
   } catch (err) {
@@ -145,13 +167,11 @@ async function fixBadGithubLink(block, oldUrl) {
     }
 }
 
-// 统一的更新 Block 函数
 async function updateBlockUrl(blockId, newUrl) {
     try {
         await notion.blocks.update({
             block_id: blockId,
             image: {
-                // ✅ 修复了之前的 validation error，不传 type: "external"
                 external: {
                     url: newUrl
                 }
@@ -164,9 +184,8 @@ async function updateBlockUrl(blockId, newUrl) {
 }
 
 async function main() {
-  console.log("🚀 开始正文图片清洗任务 (含坏链修复)...");
+  console.log("🚀 开始正文图片清洗任务 (含自动压缩)...");
 
-  // 这里为了测试，先不加时间过滤，跑一次全量
   const pages = await notion.databases.query({
     database_id: DATABASE_ID,
   });
