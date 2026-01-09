@@ -41,7 +41,9 @@ async function uploadToGithub(buffer, filename) {
         }
     }
     // 返回 GitHub raw 链接 (注意：由于缓存原因，刚上传完可能需要一点时间才能访问)
-    return `https://raw.githubusercontent.com/${IMAGE_REPO}/${IMAGE_BRANCH}/images/${filename}`;
+    // return `https://raw.githubusercontent.com/${IMAGE_REPO}/${IMAGE_BRANCH}/images/${filename}`;
+    // 注意格式是：https://cdn.jsdelivr.net/gh/用户名/仓库名@分支名/文件路径
+    return `https://cdn.jsdelivr.net/gh/${IMAGE_REPO}@${IMAGE_BRANCH}/images/${filename}`;
   } catch (e) {
     console.error("上传 GitHub 失败:", e);
     return null;
