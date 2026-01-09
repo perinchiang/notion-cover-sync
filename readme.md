@@ -35,7 +35,7 @@
 | `NOTION_TOKEN` | Notion Integration Token | `secret_xxxx...` |
 | `DATABASE_ID` | 你的 Notion 数据库 ID | `32位字符` |
 | `GH_TOKEN` | GitHub Personal Access Token | `github_pat_xxx...` |
-| `IMAGE_REPO` | 存图的仓库 (用户名/仓库名) | `perinchiang/notion-image-bed` |
+| `IMAGE_REPO` | 存图的仓库 (用户名/仓库名) | `xxx/image-bed` |
 | `IMAGE_BRANCH` | 存图的分支 | `main` |
 
 ## 🛠 工作流说明
