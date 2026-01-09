@@ -1,4 +1,4 @@
-# Notion Image Sync & Wash (全能版)
+# Notion Cover Sync & Wash (全能版)
 
 这是一个自动化的 Notion 图片管理工具，包含两个核心功能：
 1. **封面同步 (Cover Sync)**：自动提取 Notion 页面第一张图片作为封面，并上传到 GitHub 图床。
