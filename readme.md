@@ -44,7 +44,7 @@
 ## 📈 效果示例
 
 🚀 更新后的 Notion 页面封面：  
-![示例封面](https://images-1314261959.cos.ap-guangzhou.myqcloud.com/img/20260109094646364.png)
+![实例](https://images-1314261959.cos.ap-guangzhou.myqcloud.com/img/20260109094934009.png)
 
 ---
 
